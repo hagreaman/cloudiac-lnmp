@@ -1,0 +1,50 @@
+provider "alicloud" {
+  access_key = "LTAI5tQmGdTAzSHhGhaXDVQk"
+  secret_key = "Hyr0WhaJI3AvxttLYYTKNJksVcgro9"
+  region     = "cn-hangzhou"
+}
+
+resource "alicloud_security_group" "group" {
+  name        = "tf_test_foo"
+  description = "foo"
+  vpc_id      = "${alicloud_vpc.vpc.id}"
+}
+resource "alicloud_vpc" "vpc" {
+  name       = "tf_test_foo"
+  cidr_block = "172.16.0.0/12"
+}
+
+resource "alicloud_vswitch" "vswitch" {
+  vpc_id            = "${alicloud_vpc.vpc.id}"
+  cidr_block        = "172.16.0.0/21"
+  availability_zone = "cn-hangzhou-i"
+} 
+
+resource "alicloud_instance" "instance" {
+  availability_zone = "cn-hangzhou-i"
+  security_groups   = "${alicloud_security_group.group.*.id}"
+  instance_type              = "ecs.t6-c2m1.large"
+  system_disk_category       = "cloud_efficiency"
+  image_id                   = "ubuntu_18_04_64_20G_alibase_20190624.vhd"
+  instance_name              = "test_foo"
+  vswitch_id                 = "${alicloud_vswitch.vswitch.id}"
+  
+  internet_max_bandwidth_out = 0
+}
+
+resource "ansible_host" "salt-proxy" {
+  count = 1
+
+  // 配置机器的 hostname，一般配置为计算资源的 public_ip (或 private_ip)
+  inventory_hostname  = alicloud_instance.ecsone[count.index].public_ip
+
+  // 配置机器所属分组
+  groups = ["salt-proxy"]
+
+  // 传给 ansible 的 vars，可在 playbook 文件中引用
+  vars = {
+    wait_connection_timeout   = 60
+    proxy_private_ip          = alicloud_instance.ecsone[count.index].private_ip
+    proxy_docker_tag          = var.proxy_docker_tag
+  }
+}
